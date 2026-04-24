@@ -1,341 +1,326 @@
-<<<<<<< HEAD
-# Air Quality Analysis and AQI_Bucket Prediction Using Machine Learning
-
-This project focuses on analyzing air quality data collected from multiple Indian cities between 2015 and 2020. The dataset contains daily observations of critical air pollutants such as PM2.5, PM10, NO, NO2, NOx, CO, SO2, NH3, O3, and VOCs (Benzene, Toluene, Xylene), along with the Air Quality Index (AQI) and the categorized AQI_Bucket.
-
-The goal of this project is to clean and analyze the dataset, create new useful features, build machine learning models to predict AQI_Bucket, and design a multi-page Streamlit GUI application for interactive data exploration and predictions.
-
-# Project Objectives
-
-Clean and preprocess the raw dataset.
-
-Perform Exploratory Data Analysis (EDA).
-
-Engineer new features to improve model performance.
-
-Build predictive machine learning models for AQI_Bucket.
-
-Visualize pollutant patterns and relationships.
-
-Develop a multi-page GUI using Streamlit.
-
-Use GitHub for version control and documentation.
-
-# Requirements
-
+import streamlit as st
 import pandas as pd
-
-import os
-
-from glob import glob
-
 import numpy as np
-
-import matplotlib.pyplot as plt
-
-import seaborn as sns
-
+import os
+from glob import glob
 import plotly.express as px
 
-import plotly.graph_objects as go
+st.set_page_config(page_title="Data Cleaning", layout="wide")
+
+# ---------------- HIDE SIDEBAR ----------------
+hide_sidebar = """
+<style>
+    [data-testid="stSidebar"] {display: none;}
+    [data-testid="collapsedControl"] {display: none;}
+</style>
+"""
+st.markdown(hide_sidebar, unsafe_allow_html=True)
+
+# ---------------- TOP NAVIGATION BAR ----------------
+navbar = """
+<style>
+.topnav {
+    background-color: #1f2937;
+    overflow: hidden;
+    padding: 18px;
+    border-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+}
+.topnav a {
+    color: #f2f2f2;
+    padding: 14px 26px;
+    text-decoration: none;
+    font-size: 17px;
+    border-radius: 6px;
+    transition: 0.3s;
+}
+.topnav a:hover {
+    background-color: #374151;
+}
+.topnav a.active {
+    background-color: #2563eb;
+    color: white;
+}
+.card {
+    background: #e962f5;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
+}
+.custom-divider {
+    margin-top: 5px;
+    margin-bottom: 20px;
+    height: 2px;
+    background: #e962f5;
+}
+
+
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+</style>
+
+<div class="topnav">
+  <a href="/app">Home</a>
+  <a href="/Data_Cleaning" class="active">Data Cleaning</a>
+  <a href="/Data_Visualization">Data Visualization</a>
+  <a href="/Model_Training">Model_Training</a>
+  <a href="/Post-Review">Project Review</a>
+</div>
+"""
+st.markdown(navbar, unsafe_allow_html=True)
+
+st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
+
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.title(" Data Cleaning & Preprocessing")
+st.write("Prepare, clean, and explore your dataset with automated preprocessing steps.")
+
+
+uploaded_files = st.file_uploader("Upload your CSV files", type=["csv"], accept_multiple_files=True)
+
+@st.cache_data
+def load_and_clean_data(files):
+    if not files:
+        return None, "Please upload at least one dataset."
+
+    dfs = [pd.read_csv(file, parse_dates=["Date"], low_memory=False) for file in files]
+    dataset = pd.concat(dfs, ignore_index=True)
+
+  
+    dataset.drop_duplicates(inplace=True)
+
+   
+    dataset["Date"] = pd.to_datetime(dataset["Date"], errors="coerce")
+    dataset["Date"].fillna(dataset["Date"].median(), inplace=True)
+
+   
+    pollutants = ['PM2.5','PM10','NO','NO2','NOx','NH3','CO','SO2','O3','Benzene','Toluene','Xylene']
+    for col in pollutants:
+        if col in dataset.columns:
+            dataset[col].fillna(dataset[col].median(), inplace=True)
+
+    
+    if "AQI" in dataset.columns:
+        dataset["AQI"].fillna(dataset["AQI"].median(), inplace=True)
+
+   
+    def assign_bucket(aqi):
+        if aqi <= 50: return "Good"
+        elif aqi <= 100: return "Satisfactory"
+        elif aqi <= 200: return "Moderate"
+        elif aqi <= 300: return "Poor"
+        elif aqi <= 400: return "Very Poor"
+        else: return "Severe"
 
-import streamlit
+    if "AQI_Bucket" in dataset.columns:
+        dataset["AQI_Bucket"] = dataset.apply(
+            lambda row: assign_bucket(row["AQI"]) if pd.isna(row["AQI_Bucket"]) else row["AQI_Bucket"],
+            axis=1
+        )
 
-scikit-learn
+    return dataset, f"Data successfully cleaned. Shape: {dataset.shape}"
 
-from google.colab import drive
 
-# Project Objectives
-Clean and preprocess the raw dataset.
+if uploaded_files:
+    data_frame, message = load_and_clean_data(uploaded_files)
+    st.success(message)
 
-Perform Exploratory Data Analysis (EDA).
+    st.markdown("### 🔍 Preview of Cleaned Dataset")
+    st.dataframe(data_frame.head(10), use_container_width=True)
 
-Engineer new features to improve model performance.
+    st.markdown("### 🧪 Missing Values After Cleaning")
+    st.dataframe(data_frame.isnull().sum())
 
-Build predictive machine learning models for AQI_Bucket.
+else:
+    st.info("Upload one or more CSV files to begin cleaning.")
 
-Visualize pollutant patterns and relationships.
 
-Develop a multi-page GUI using Streamlit.
+st.markdown("---")
+st.subheader(" Load Data From Local Folder (Auto-Processing)")
 
-Use GitHub for version control and documentation.
+folder_path = "Assessment Data-20251028"
 
-# Data Cleaning & Preprocessing
-The initial dataset contained:
+@st.cache_data
+def load_and_clean_data_from_folder(f_path):
+    if not os.path.exists(f_path):
+        return None, f"Folder not found at: {f_path}"
 
-Over 29,000 rows
+    files = glob(os.path.join(f_path, "*.csv"))
+    if not files:
+        return None, "No CSV files found in folder."
 
-16 pollutant and index columns
+    dfs = [pd.read_csv(file, parse_dates=["Date"], low_memory=False) for file in files]
+    dataset = pd.concat(dfs, ignore_index=True)
 
-Missing values in multiple features
+    dataset.drop_duplicates(inplace=True)
 
-Several CSV files requiring merging
+    dataset["Date"] = pd.to_datetime(dataset["Date"], errors="coerce")
+    dataset["Date"].fillna(dataset["Date"].median(), inplace=True)
 
-# Data Cleaning Steps:
-Merged all CSV files from the dataset folder.
+    pollutants = ['PM2.5','PM10','NO','NO2','NOx','NH3','CO','SO2','O3','Benzene','Toluene','Xylene']
+    for c in pollutants:
+        if c in dataset.columns:
+            dataset[c].fillna(dataset[c].median(), inplace=True)
 
-Converted the Date column to datetime format.
+    if "AQI" in dataset.columns:
+        dataset["AQI"].fillna(dataset["AQI"].median(), inplace=True)
 
-Removed duplicate rows.
+    def assign_bucket(aqi):
+        if aqi <= 50: return "Good"
+        elif aqi <= 100: return "Satisfactory"
+        elif aqi <= 200: return "Moderate"
+        elif aqi <= 300: return "Poor"
+        elif aqi <= 400: return "Very Poor"
+        else: return "Severe"
 
-Handled missing values using:
+    if "AQI_Bucket" in dataset.columns:
+        dataset["AQI_Bucket"] = dataset.apply(
+            lambda row: assign_bucket(row["AQI"]) if pd.isna(row["AQI_Bucket"]) else row["AQI_Bucket"],
+            axis=1
+        )
 
-Median imputation for pollutants
+    return dataset, f"Folder data cleaned. Final shape: {dataset.shape}"
 
-Median timestamp for missing dates
+data_frame, msg = load_and_clean_data_from_folder(folder_path)
 
-Filled missing AQI_Bucket using an AQI-based classification function.
+if data_frame is not None:
+    st.success(msg)
 
-Removed invalid or inconsistent values.
+    st.markdown("###  Combined Dataset Preview")
+    st.dataframe(data_frame.head(15), use_container_width=True)
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/9720ae78-3143-40a4-86aa-51a9dab63f41" />
+    st.markdown("---")
+    st.subheader(" City-Wise Cleaning Results")
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/272b9963-e43b-407f-a55e-bf14ad1f2b5d" />
+    for city in data_frame["City"].unique()[:6]:
+        st.markdown(f"**City:** {city}")
+        st.dataframe(data_frame[data_frame["City"] == city].head(6))
+        st.markdown("---")
 
-# Feature Engineering
-To enrich the dataset and improve model performance, the following new features were created:
+else:
+    st.error(msg)
 
-# Time-based Features
 
-Year
+st.markdown("---")
+st.header(" Exploratory Data Analysis (EDA)")
 
-Month
+if data_frame is not None:
 
-DayOfWeek
+    st.subheader("Univariate Analysis")
+    numeric_cols = data_frame.select_dtypes(include=[np.number]).columns
+    categorical_cols = data_frame.select_dtypes(include=["object"]).columns
 
-Season
+    col_select = st.selectbox("Select a column", list(numeric_cols) + list(categorical_cols))
 
-# Pollutant Aggregation Features
+    if col_select in numeric_cols:
+        st.write(data_frame[col_select].describe())
+        fig = px.histogram(data_frame, x=col_select, nbins=40)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        freq = data_frame[col_select].value_counts().reset_index()
+        fig = px.bar(freq, x="index", y=col_select)
+        st.plotly_chart(fig, use_container_width=True)
 
-Total_Nitrogen = NO + NO2 + NOx
+else:
+    st.warning("Upload or load data to continue.")
 
-Total_VOC = Benzene + Toluene + Xylene
+st.markdown("---")
+st.subheader("Bivariate Analysis")
+st.write("Bivariate analysis examines the relationship between two variables.")
 
-PM_Load = PM2.5 + PM10
+col_x = st.selectbox("Select X variable:", numeric_cols)
+col_y = st.selectbox("Select Y variable:", numeric_cols)
 
-# Rolling Window Features
+st.write(f"### Relationship between **{col_x}** and **{col_y}**")
+st.scatter_chart(data_frame[[col_x, col_y]])
 
-PM2.5_7day_avg
+correlation = data_frame[[col_x, col_y]].corr().iloc[0, 1]
+st.info(f"Correlation between {col_x} and {col_y}: **{correlation:.3f}**")
 
-PM10_7day_avg
+st.markdown("---")
 
-# Lag Features
+st.subheader("Multivariate Analysis")
+st.write("Multivariate analysis explores more than two variables simultaneously.")
 
-PM2.5_lag1
 
-PM10_lag1
 
-These engineered features helped the model detect trends, weekly patterns, and pollutant interactions.
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/85e59036-5da6-4712-b385-cd13c450dc74" />
+col1, col2 = st.columns(2)
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/4c5753e6-ab32-49c7-92cc-6f17a17e2b8d" />
+with col1:
+    st.subheader('Upload Cleaning Notes ')
+    text_area_1 = st.text_area("Enter notes for Upload Data Cleaning :", height=200, key="ta1")
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/871062e0-8c21-496c-a9e8-aee0585b8e78" />
+    if st.button('Publish Notes', key="btn1"):
+        if text_area_1:
+            st.info(f"Step 1 applied with input: {text_area_1[:50]}...")
+        else:
+            st.warning("Please enter text for Step 1.")
 
-# Exploratory Data Analysis (EDA)
+with col2:
+    st.subheader('Fixed Cleaning Notes')
+    text_area_2 = st.text_area("Enter notes for Fixed Data Cleaning :", height=200, key="ta2")
 
-Multiple visualizations were generated to understand patterns in the dataset. These include:
+    if st.button('Publish Notes', key="btn2"):
+        if text_area_2:
+            st.info(f"Step 2 applied with input: {text_area_2[:50]}...")
+        else:
+            st.warning("Please enter text for Step 2.")
 
-# Univariate Analysis
 
-Histograms of pollutants
 
-AQI_Bucket distribution
 
-# Bivariate Analysis
+st.header("Missing Value Treatment")
 
-PM2.5 vs AQI scatter plot
+if data_frame is None:
+    st.error("No dataset available. Please upload or load data first.")
+else:
 
-VOC pollutant relationships
+    def missing_values_table(df):
+        mis_val = df.isnull().sum()
+        mis_val_percent = 100 * df.isnull().sum() / len(df)
 
-# Multivariate Analysis
+        mis_val_table = pd.concat([mis_val, mis_val_percent], axis=1)
+        mis_val_table_ren_columns = mis_val_table.rename(
+            columns={0: 'Missing Values', 1: '% of Total Values'}
+        )
+        mis_val_table_ren_columns = mis_val_table_ren_columns[
+            mis_val_table_ren_columns.iloc[:, 1] != 0
+        ].sort_values('% of Total Values', ascending=False)
 
-Correlation heatmap
+        return mis_val_table_ren_columns
 
-Pairplot of key pollutants
+    st.subheader("Missing Values (Before Cleaning)")
+    st.dataframe(missing_values_table(data_frame))
 
-City-wise PM2.5 comparison (Box plot)
+    num_cols = ['PM2.5', 'PM10', 'NO', 'NO2', 'NOx', 'NH3', 'CO',
+                'SO2', 'O3', 'Benzene', 'Toluene', 'Xylene', 'AQI']
 
-Monthly pollutant seasonality trends
+    cat_col = 'AQI_Bucket'
 
-Weekday pollutant variation
+    if st.button("Clean Missing Values"):
+        df1 = data_frame.copy()
 
-VOC comparison across cities
+        for col in num_cols:
+            if col in df1.columns:
+                if df1[col].isnull().any():
+                    median_val = df1[col].median()
+                    df1[col] = df1[col].fillna(median_val)
 
-These insights helped show which pollutants were most impactful and how air quality changes across time and location.
+        if cat_col in df1.columns:
+            if df1[cat_col].isnull().any():
+                mode_val = df1[cat_col].mode()[0]
+                df1[cat_col] = df1[cat_col].fillna(mode_val)
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/bbfc93fd-775b-4da3-82a2-878241bce77e" />
+        st.success("Missing values have been successfully filled!")
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/799886f3-2d6a-47a9-aa30-af2b84dbc436" />
+        st.subheader("Missing Values (After Cleaning)")
+        st.dataframe(missing_values_table(df1))
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/35733eb1-25d4-4726-b750-a2b0d0165cfa" />
+        st.session_state["clean_df"] = df1
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/225d6e6c-2f62-485d-9122-008ee3245ca7" />
+    else:
+        st.info("Click the button above to clean missing values.")
 
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/412d9272-53bc-4193-a2f5-c68500ecc870" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/2931f381-8740-4e7f-aa21-8df38b57ca88" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/a73a0573-dade-4cb2-94b2-c0a8b192fc17" />
-
-# Machine Learning Model
-
-The target variable is AQI_Bucket, a categorical classification problem.
-
-# Machine Learning Libraries Import
-
-from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
-
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-
-from sklearn.compose import ColumnTransformer
-
-from sklearn.pipeline import Pipeline
-
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-
-from sklearn.ensemble import RandomForestClassifier
-
-from sklearn.linear_model import LogisticRegression
-
-# Models Built:
-
-Random Forest Classifier
-
-Logistic Regression (baseline)
-
-# Preprocessing Pipeline:
-
-One-hot encoding of categorical features
-
-Standard scaling for numerical features
-
-Train-test split
-
-Cross-validation
-
-Grid Search hyperparameter tuning
-
-# Random Forest Performance:
-
-Accuracy: ~99%
-
-Strong precision and recall across all AQI categories
-
-Feature importance shows AQI, PM2.5, PM_Load, PM lags, and nitrogen pollutants as top predictors.
-
-# Logistic Regression:
-
-Achieved ~96% accuracy
-
-Served as a good baseline model
-
-Random Forest significantly outperformed Logistic Regression
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/85e78cb9-24f4-490c-a475-9bd4ad4738eb" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/5606a0a0-5655-4bcf-8bf8-be6ca605d55f" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/ca42dac2-ce7a-4fa8-91ef-82d7c021a6dd" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/e98cc166-596c-4990-8cf8-78d17f0ad5b9" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/03228e87-b806-45a0-b008-c6d25039a16c" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/0dea8d63-313f-4e63-a864-ffda474d64b4" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/e98464db-fe54-487e-bd7c-00206c0f47c3" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/0b504f29-aa61-4150-9f85-d243fc95039d" />
-
-# Streamlit Multi-Page GUI Application
-A professional, user-friendly dashboard was built using Streamlit with 4 pages:
-
-# Page 1 — Data Overview
-
-Shows merged dataset preview
-
-Summary statistics
-
-Data types
-
-Missing value report
-
-General project description
-
-# Page 2 — Data Cleaning
-
-Displays cleaning steps
-
-Before/after comparison
-
-Handling of missing values
-
-Feature engineering summary
-
-# Page 3 — Data Visualization
-
-Interactive plots using Plotly
-
-Monthly and weekly trends
-
-City comparison
-
-Correlation heatmaps
-
-PM distributions
-
-# Page 4 — Machine Learning Model
-
-Shows model accuracy
-
-Classification report
-
-Confusion matrix
-
-Feature importance plot
-
-Prediction interface for user inputs
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/e6209449-e5e9-46cd-b62a-9cc4d654dc4a" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/50847304-b2c3-4fb6-a9af-ead5dbb775e9" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/0e33e8ee-8419-41c2-833c-595a7bc5f08a" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/83d3f7cd-2597-40d0-a661-de9d7d541603" />
-
-<img width="1920" height="1080" alt="Image" src="https://github.com/user-attachments/assets/1bab6863-21b0-4861-a9b3-37c65cb87711" />
-
-# Project Structure
-Air-Quality-Project/
-│
-├── pages/
-│   ├── 1_Data_Overview.py
-│   ├── 2_Data_Cleaning.py
-│   ├── 3_Data_Visualization.py
-│   ├── 4_Machine_Learning_Model.py
-│
-├── data/
-│   └── Assessment Data-20251028/
-│
-├── model/
-│   └── rf_model.pkl
-│
-├── README.md
-└── app.py
-
-# How to Run the Project
-## Install dependencies:
-pip install -r requirements.txt
-
-# Run the Streamlit app:
-streamlit run app.py
-
-# Conclusion
-This project successfully analyzes air quality patterns, engineers meaningful features, and builds a high-performing machine learning model to predict AQI_Bucket. The Streamlit GUI provides a clean and interactive way to explore, visualize, and predict air quality levels, making the system practical for real-world environmental monitoring or educational purposes.
-=======
-# Programming-for-data-analysis-CMP7005_S1_25
-CMP7005_S1_25
->>>>>>> 4bac1a95d784b24aebeb47081cc2556b3ef421dc
